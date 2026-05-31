@@ -1,0 +1,65 @@
+#!/bin/busybox sh
+
+/bin/busybox mount -t proc none /proc
+/bin/busybox mount -t sysfs none /sys
+/bin/busybox mount -t devtmpfs none /dev 2>/dev/null
+/bin/busybox mount -t tmpfs none /tmp
+
+/bin/busybox chown 0:0       /root      && /bin/busybox chmod 700 /root
+/bin/busybox chown 1001:1001 /home/henn && /bin/busybox chmod 700 /home/henn
+/bin/busybox chown 1002:1002 /home/hann && /bin/busybox chmod 700 /home/hann
+/bin/busybox chown 1003:1003 /home/viii && /bin/busybox chmod 700 /home/viii
+/bin/busybox chown 1004:1004 /home/kids && /bin/busybox chmod 700 /home/kids
+/bin/busybox chmod 1777 /tmp
+
+while true; do
+    /bin/busybox printf "\nlogin: "
+    read USERNAME
+    [ -z "$USERNAME" ] && continue
+
+    /bin/busybox printf "Password: "
+    stty -echo 2>/dev/null
+    read PASSWORD
+    stty echo 2>/dev/null
+    /bin/busybox echo ""
+
+    case "$USERNAME" in
+        root) EXPECTED="root123" ;;
+        henn) EXPECTED="henn123" ;;
+        hann) EXPECTED="hann123" ;;
+        viii) EXPECTED="viii123" ;;
+        kids) EXPECTED="kids123" ;;
+        *)    EXPECTED=""        ;;
+    esac
+
+    if [ -z "$EXPECTED" ] || [ "$PASSWORD" != "$EXPECTED" ]; then
+        /bin/busybox echo "Login incorrect"
+        continue
+    fi
+
+    # Banner
+    echo "  _____                        _ _   ____            _          "
+    echo " |  ___|_ _ _ __ _____      _____| | | |  _ \ __ _ _ __| |_ _   _  "
+    echo " | |_ / _\` | '__/ _ \ \ /\ / / _ \ | | | |_) / _\` | '__| __| | | | "
+    echo " |  _| (_| | | |  __/\ V  V /  __/ | | |  __/ (_| | |  | |_| |_| | "
+    echo " |_|  \__,_|_|  \___| \_/\_/ \___|_|_| |_|   \__,_|_|   \__|\__, | "
+    echo "                                                                |___/ "
+    echo ""
+    echo "Welcome, $USERNAME"
+    echo ""
+
+    # su tanpa password prompt karena kita sudah verifikasi sendiri
+    # Tulis password ke file temp lalu pipe ke su -c
+    case "$USERNAME" in
+        root) PASS="root123" ;;
+        henn) PASS="henn123" ;;
+        hann) PASS="hann123" ;;
+        viii) PASS="viii123" ;;
+        kids) PASS="kids123" ;;
+    esac
+
+    # su dengan password via stdin
+    echo "$PASS" | /bin/busybox su "$USERNAME" -c \
+        "export USER=$USERNAME; export HOME=/home/$USERNAME; [ '$USERNAME' = 'root' ] && export HOME=/root; cd \$HOME; exec /bin/busybox sh"
+
+done
