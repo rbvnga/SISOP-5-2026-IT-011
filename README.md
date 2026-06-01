@@ -11,7 +11,7 @@ Pastikan terlehih dahulu apakah file `BIOS-bochs-latest` dan `VGABIOS-lgpl-lates
 ``````bash
 ls /usr/share/bochs/
 ``````
-```
+```txt
 romimage: file=/usr/share/bochs/BIOS-bochs-latest
 vgaromimage: file=/usr/share/bochs/VGABIOS-lgpl-latest
 boot: floppy
@@ -24,7 +24,7 @@ display_library: sdl2
 `mouse: enabled=0` untuk menonaktifkan mouse, karena OS hanya membutuhkan Keyboard. <br>
 `display_library: sdl2` adalah library yang dipakai Bochs untuk menampilkan layar emulator di linux. <br>
 ### kernel.asm 
-```
+```asm
 bits 16
 
 global _start
