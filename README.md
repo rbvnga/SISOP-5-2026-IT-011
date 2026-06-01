@@ -63,7 +63,9 @@ make -j$(nproc) \
 | `-Wno-error` | Warning tidak dijadikan error (fix beberapa warning di kernel 6.1.1) |
 | `CC` dan `HOSTCC` | Override compiler untuk kernel dan host tools |
 
-**Catatan:** Flag ini diperlukan karena GCC versi terbaru (15.x) menggunakan C23 sebagai default, sedangkan Linux kernel 6.1.1 belum kompatibel dengan C23.
+**Catatan:** Flag ini diperlukan karena GCC versi terbaru (15.x) menggunakan C23 sebagai default, sedangkan Linux kernel 6.1.1 belum kompatibel dengan C23. 
+#### output
+<img width="804" height="126" alt="1_output kernel" src="https://github.com/user-attachments/assets/645d82cc-8f1c-4bc5-84b7-0eaf8ba8bd03" /> <br>
 
 ### single.sh
 Script ini membuat filesystem minimal dengan satu user (root) menggunakan BusyBox sebagai shell environment. Output disimpan sebagai `osboot/single.gz`. <br>
@@ -116,7 +118,193 @@ cd "$BASE_DIR"
 rm -rf single_fs
 echo "[+] Done! Output: osboot/single.gz"
 ```
+#### output
+<img width="887" height="104" alt="1_output single" src="https://github.com/user-attachments/assets/d0e748a5-d7e9-4089-b0f1-b42dc601ceb0" /> <br>
 
+### multi.sh
+Script ini membuat filesystem dengan 5 user, lengkap dengan password, akses kontrol, dan banner login. Output disimpan sebagai `osboot/multi.gz`.
+
+#### Spesifikasi User
+
+| User | Password |
+|---|---|
+| root | (enter) |
+| henn | henn123 |
+| hann | hann123 |
+| viii | viii123 |
+| kids | kids123 |
+
+#### Spesifikasi Akses
+| User | Access |
+|---|---|
+| root | Akses penuh ke semua direktori |
+| henn | Full akses `/home/*`, gabisa akses `/root` |
+| hann | Full akses `/home/{hann,viii,kids}`, gabisa `/root` & `/home/henn` |
+| viii | Full akses `/home/{viii,kids}`, gabisa `/root` & `/home/{henn,hann}` |
+| kids | Full akses `/home/kids`, gabisa `/root` & `/home/{henn,hann,viii}` |
+| ALL | Selain specs diatas cuma bisa read dan execute, full akses `tmp/` |
+
+```bash
+#!/bin/bash
+set -e
+BASE_DIR="$(cd "$(dirname "$0")" && pwd)"
+cd "$BASE_DIR"
+
+# Compile switchuser
+if [ ! -f /tmp/switchuser ]; then
+    cat > /tmp/switchuser.c << 'EOF'
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <pwd.h>
+#include <grp.h>
+
+int main(int argc, char *argv[]) {
+    if (argc < 2) return 1;
+    struct passwd *pw = getpwnam(argv[1]);
+    if (!pw) { fprintf(stderr, "user not found\n"); return 1; }
+    if (initgroups(pw->pw_name, pw->pw_gid) != 0) { perror("initgroups"); return 1; }
+    if (setgid(pw->pw_gid) != 0) { perror("setgid"); return 1; }
+    if (setuid(pw->pw_uid) != 0) { perror("setuid"); return 1; }
+    setenv("USER",    pw->pw_name, 1);
+    setenv("LOGNAME", pw->pw_name, 1);
+    setenv("HOME",    pw->pw_dir,  1);
+    setenv("PATH",    "/bin",      1);
+    chdir(pw->pw_dir);
+    char *sh[] = {"/bin/sh", NULL};
+    execv("/bin/sh", sh);
+    return 1;
+}
+EOF
+    gcc -static -o /tmp/switchuser /tmp/switchuser.c
+fi
+
+mkdir -p osboot
+rm -rf multi_fs
+mkdir -p multi_fs/{bin,dev,proc,sys,etc,tmp,root}
+mkdir -p multi_fs/home/{henn,hann,viii,kids}
+cd multi_fs
+
+# Scaffold BusyBox
+cp /usr/bin/busybox bin/busybox
+bin/busybox --install -s bin/
+ln -sf /bin/busybox bin/sh
+cp /tmp/switchuser bin/switchuser
+chmod +x bin/switchuser
+
+# Hash password
+ROOT_HASH=$(openssl passwd -6 "root123")
+HENN_HASH=$(openssl passwd -6 "henn123")
+HANN_HASH=$(openssl passwd -6 "hann123")
+VIII_HASH=$(openssl passwd -6 "viii123")
+KIDS_HASH=$(openssl passwd -6 "kids123")
+
+cat > etc/passwd << EOF
+root:x:0:0:root:/root:/bin/sh
+henn:x:1001:1001:henn:/home/henn:/bin/sh
+hann:x:1002:1002:hann:/home/hann:/bin/sh
+viii:x:1003:1003:viii:/home/viii:/bin/sh
+kids:x:1004:1004:kids:/home/kids:/bin/sh
+EOF
+
+cat > etc/shadow << EOF
+root:${ROOT_HASH}:19000:0:99999:7:::
+henn:${HENN_HASH}:19000:0:99999:7:::
+hann:${HANN_HASH}:19000:0:99999:7:::
+viii:${VIII_HASH}:19000:0:99999:7:::
+kids:${KIDS_HASH}:19000:0:99999:7:::
+EOF
+chmod 640 etc/shadow
+
+
+# /home/hann (GID 1002) 
+# /home/viii (GID 1003)
+# /home/kids (GID 1004) 
+cat > etc/group << EOF
+root:x:0:root
+henn:x:1001:henn
+hann:x:1002:hann,henn
+viii:x:1003:viii,henn,hann
+kids:x:1004:kids,henn,hann,viii
+EOF
+
+cat > init << 'INITEOF'
+#!/bin/busybox sh
+
+/bin/busybox mount -t proc none /proc
+/bin/busybox mount -t sysfs none /sys
+/bin/busybox mount -t devtmpfs none /dev 2>/dev/null
+/bin/busybox mount -t tmpfs none /tmp
+/bin/busybox chmod 1777 /tmp
+
+# /root: hanya root
+/bin/busybox chown 0:0       /root      && /bin/busybox chmod 700 /root
+
+# /home/henn: hanya henn, semua lain gabisa
+/bin/busybox chown 1001:1001 /home/henn && /bin/busybox chmod 700 /home/henn
+
+# /home/hann: owner hann, group hann (hanya henn yg ada di group) → viii,kids gabisa
+/bin/busybox chown 1002:1002 /home/hann && /bin/busybox chmod 750 /home/hann
+
+# /home/viii: owner viii, group viii (henn,hann ada di group) → kids gabisa
+/bin/busybox chown 1003:1003 /home/viii && /bin/busybox chmod 750 /home/viii
+
+# /home/kids: owner kids, group kids (henn,hann,viii ada di group) → semua bisa
+/bin/busybox chown 1004:1004 /home/kids && /bin/busybox chmod 750 /home/kids
+
+while true; do
+    /bin/busybox printf "\nlogin: "
+    read USERNAME
+    [ -z "$USERNAME" ] && continue
+
+    /bin/busybox printf "Password: "
+    stty -echo 2>/dev/null
+    read PASSWORD
+    stty echo 2>/dev/null
+    /bin/busybox echo ""
+
+    case "$USERNAME" in
+        root) EXPECTED="root123" ;;
+        henn) EXPECTED="henn123" ;;
+        hann) EXPECTED="hann123" ;;
+        viii) EXPECTED="viii123" ;;
+        kids) EXPECTED="kids123" ;;
+        *)    EXPECTED=""        ;;
+    esac
+
+    if [ -z "$EXPECTED" ] || [ "$PASSWORD" != "$EXPECTED" ]; then
+        /bin/busybox echo "Login incorrect"
+        continue
+    fi
+
+    /bin/busybox echo "  _____                        _ _   ____            _          "
+    /bin/busybox echo " |  ___|_ _ _ __ _____      _____| | | |  _ \ __ _ _ __| |_ _   _  "
+    /bin/busybox echo " | |_ / _\` | '__/ _ \ \ /\ / / _ \ | | | |_) / _\` | '__| __| | | | "
+    /bin/busybox echo " |  _| (_| | | |  __/\ V  V /  __/ | | |  __/ (_| | |  | |_| |_| | "
+    /bin/busybox echo " |_|  \__,_|_|  \___| \_/\_/ \___|_|_| |_|   \__,_|_|   \__|\__, | "
+    /bin/busybox echo "                                                                |___/ "
+    /bin/busybox echo ""
+    /bin/busybox echo "Welcome, $USERNAME"
+    /bin/busybox echo ""
+
+    /bin/switchuser "$USERNAME"
+
+done
+INITEOF
+chmod +x init
+
+find . | cpio -o --format=newc | gzip > "$BASE_DIR/osboot/multi.gz"
+cd "$BASE_DIR"
+rm -rf multi_fs
+echo "[+] Done! Output: osboot/multi.gz"
+```
+#### output
+<img width="987" height="104" alt="1_output multi" src="https://github.com/user-attachments/assets/f16f2cc3-2ea4-417b-81b0-3ff6be98975b" />
+
+<br>
+
+### iso.sh
+Menggabungkan `bzImage`, `single.gz`, dan `multi.gz` menjadi satu file ISO bootable menggunakan GRUB. Output disimpan sebagai `osboot/farewell.iso`. <br>
 ## Soal 2 - Season
 Mengimplementasikan mini OS shell sederhana yang berjalan di emulator Bochs x86-64. Shell ini mendukung berbagai command seperti operasi matematika, tampilan warna, dan lainnya. <br>
 ### bochsrc.txt
