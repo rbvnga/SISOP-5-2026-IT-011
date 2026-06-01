@@ -7,7 +7,10 @@ NRP : 5027251011 <br>
 ## Soal 2 - Season
 Mengimplementasikan mini OS shell sederhana yang berjalan di emulator Bochs x86-64. Shell ini mendukung berbagai command seperti operasi matematika, tampilan warna, dan lainnya. <br>
 ### bochsrc.txt
-
+Pastikan terlehih dahulu apakah file `BIOS-bochs-latest` dan `VGABIOS-lgpl-latest` sudah tersedia, dengan command <br>
+``````bash
+ls /usr/share/bochs/
+``````
 ```
 romimage: file=/usr/share/bochs/BIOS-bochs-latest
 vgaromimage: file=/usr/share/bochs/VGABIOS-lgpl-latest
@@ -17,7 +20,59 @@ log: bochslog.txt
 mouse: enabled=0
 display_library: sdl2
 ```
+`romimage` berisi file BIOS (program pertama yang dijalankan saat komputer nyala, sebelum bootloader) yang dibituhkan Bochs. Sedangkan ``  berisi file VGA BIOS, yang mengatur bagaimana tampilan/layar bekerja di emulator. <br>
+`mouse: enabled=0` untuk menonaktifkan mouse, karena OS hanya membutuhkan Keyboard. <br>
+`display_library: sdl2` adalah library yang dipakai Bochs untuk menampilkan layar emulator di linux. <br>
+### kernel.asm 
+```
+bits 16
 
+global _start
+global _putInMemory
+global _getChar
+extern _main
+
+_start:
+
+    cli
+
+    mov ax, cs
+    mov ds, ax
+    mov es, ax
+
+    sti
+
+    call _main
+
+.hang:
+    jmp .hang
+
+
+_putInMemory:
+    push bp
+    mov bp, sp
+
+    push ds
+
+    mov ax, [bp+4]
+    mov si, [bp+6]
+    mov cl, [bp+8]
+
+    mov ds, ax
+    mov [si], cl
+
+    pop ds
+
+    pop bp
+    ret
+
+; implement this
+_getChar:
+    mov ah, 0x00
+    int 0x16
+    xor ah, ah
+    ret
+```
 ### kernel.c
 ```c
 int cursor;
