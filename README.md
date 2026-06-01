@@ -420,7 +420,7 @@ rm -f bzImage single.gz multi.gz farewell.iso
 echo "[+] Done! Backup: $BACKUP_NAME"
 ```
 #### output
-<img width="830" height="217" alt="1_backup" src="https://github.com/user-attachments/assets/354fb56d-2bf9-49ef-a9f1-2fec31813eb0" /> <br><img width="1014" height="620" alt="1_Single" src="https://github.com/user-attachments/assets/c7bb784b-b08c-4d29-81da-6802c54acae3" />
+<img width="830" height="217" alt="1_backup" src="https://github.com/user-attachments/assets/354fb56d-2bf9-49ef-a9f1-2fec31813eb0" /> <br>
 
 ### Tes Koneksi ke Akses Internet
 <img width="1200" height="988" alt="1_Akses Internet" src="https://github.com/user-attachments/assets/bd15a9d2-efc9-4ea2-9d3f-3b9438df22d9" />
