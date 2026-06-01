@@ -3,6 +3,119 @@ Nama : Revalinda Bunga Nayla Laksono <br>
 NRP : 5027251011 <br>
 
 ## Soal 1 - Farewell Party 
+### kernel.sh
+Script ini bertugas untuk mengunduh source code Linux kernel versi **6.1.1**, mengkonfigurasi, mengompilasi, dan menyimpan hasilnya sebagai `osboot/bzImage`.
+```bash
+#!/bin/bash
+set -e
+
+BASE_DIR="$(cd "$(dirname "$0")" && pwd)"
+cd "$BASE_DIR"
+
+mkdir -p osboot
+
+# Download kernel jika belum ada
+if [ ! -f linux-6.1.1.tar.xz ]; then
+    echo "[*] Downloading Linux 6.1.1..."
+    wget https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.1.1.tar.xz
+fi
+
+# Extract jika belum ada
+if [ ! -d linux-6.1.1 ]; then
+    echo "[*] Extracting..."
+    tar -xf linux-6.1.1.tar.xz
+fi
+
+cd "$BASE_DIR/linux-6.1.1"
+
+echo "[*] Configuring kernel..."
+make defconfig
+
+# Disable EFI (tidak diperlukan di QEMU tanpa UEFI)
+scripts/config --disable CONFIG_EFI_STUB
+scripts/config --disable CONFIG_EFI
+
+# Compile
+echo "[*] Compiling kernel (pakai $(nproc) core)..."
+make -j$(nproc) \
+    KCFLAGS="-std=gnu11 -Wno-error" \
+    HOSTCFLAGS="-std=gnu11 -Wno-error" \
+    CC="gcc -std=gnu11" \
+    HOSTCC="gcc -std=gnu11"
+
+# Copy hasil
+cp arch/x86/boot/bzImage "$BASE_DIR/osboot/bzImage"
+echo "[+] Done! Output: osboot/bzImage"
+```
+#### Flag Kompilasi
+```bash
+make -j$(nproc) \
+    KCFLAGS="-std=gnu11 -Wno-error" \
+    HOSTCFLAGS="-std=gnu11 -Wno-error" \
+    CC="gcc -std=gnu11" \
+    HOSTCC="gcc -std=gnu11"
+```
+
+| Flag | Penjelasan |
+|---|---|
+| `-j$(nproc)` | Kompilasi paralel sesuai jumlah core CPU |
+| `-std=gnu11` | Gunakan standar C11 (fix error C23 pada GCC terbaru) |
+| `-Wno-error` | Warning tidak dijadikan error (fix beberapa warning di kernel 6.1.1) |
+| `CC` dan `HOSTCC` | Override compiler untuk kernel dan host tools |
+
+**Catatan:** Flag ini diperlukan karena GCC versi terbaru (15.x) menggunakan C23 sebagai default, sedangkan Linux kernel 6.1.1 belum kompatibel dengan C23.
+
+### single.sh
+Script ini membuat filesystem minimal dengan satu user (root) menggunakan BusyBox sebagai shell environment. Output disimpan sebagai `osboot/single.gz`. <br>
+### Spesifikasi
+| Item | Value |
+|---|---|
+| User | root |
+| Directory | `bin/, dev/, proc/, sys/, etc/, tmp/, root/` |
+| Access | root bisa akses apapun |
+| Output | `osboot/single.gz` |
+```bash
+#!/bin/bash
+set -e
+BASE_DIR="$(cd "$(dirname "$0")" && pwd)"
+cd "$BASE_DIR"
+
+mkdir -p osboot
+rm -rf single_fs
+mkdir -p single_fs/{bin,dev,proc,sys,etc,tmp,root}
+cd single_fs
+
+# Scaffold BusyBox
+cp /usr/bin/busybox bin/busybox
+bin/busybox --install -s bin/
+
+# Init script
+cat > init << 'EOF'
+#!/bin/busybox sh
+/bin/busybox mount -t proc none /proc
+/bin/busybox mount -t sysfs none /sys
+/bin/busybox mount -t devtmpfs none /dev 2>/dev/null
+/bin/busybox mount -t tmpfs none /tmp
+/bin/busybox chmod 1777 /tmp
+
+echo "  _____                        _ _   ____            _          "
+echo " |  ___|_ _ _ __ _____      _____| | | |  _ \ __ _ _ __| |_ _   _  "
+echo " | |_ / _\` | '__/ _ \ \ /\ / / _ \ | | | |_) / _\` | '__| __| | | | "
+echo " |  _| (_| | | |  __/\ V  V /  __/ | | |  __/ (_| | |  | |_| |_| | "
+echo " |_|  \__,_|_|  \___| \_/\_/ \___|_|_| |_|   \__,_|_|   \__|\__, | "
+echo "                                                                |___/ "
+echo ""
+echo "Welcome, root"
+echo ""
+exec /bin/busybox sh
+EOF
+chmod +x init
+
+find . | cpio -o --format=newc | gzip > "$BASE_DIR/osboot/single.gz"
+cd "$BASE_DIR"
+rm -rf single_fs
+echo "[+] Done! Output: osboot/single.gz"
+```
 
 ## Soal 2 - Season
 Mengimplementasikan mini OS shell sederhana yang berjalan di emulator Bochs x86-64. Shell ini mendukung berbagai command seperti operasi matematika, tampilan warna, dan lainnya. <br>
@@ -73,11 +186,11 @@ _getChar:
     xor ah, ah
     ret
 ```
-Fungsi `_getChar` adalah fungsi Assembly yang bertugas membaca input keyboard dari pengguna. Fungsi ini perlu dibuat di Assembly karena tidak ada library apapun (no stdlib), sehingga satu-satunya cara untuk berkomunikasi langsung dengan hardware keyboard adalah melalui BIOS interrupt. <br>
+- Fungsi `_getChar` adalah fungsi Assembly yang bertugas membaca input keyboard dari pengguna. Fungsi ini perlu dibuat di Assembly karena tidak ada library apapun (no stdlib), sehingga satu-satunya cara untuk berkomunikasi langsung dengan hardware keyboard adalah melalui BIOS interrupt. <br>
 Baris pertama akan mengisi register `AH` dengan nilai `0x00`. Register `AH` berfungsi seperti "kode perintah" yang memberitahu BIOS apa yang di minta dan nilai `0x00` akan meminta untuk membaca tombil keyboard yang ditekan pengguna. <br>
-Baris berikutnya int 0x16 adalah perintah untuk memanggil BIOS interrupt nomor 16, yaitu interrupt yang khusus menangani keyboard. Ketika baris ini dijalankan, program akan berhenti sejenak dan menunggu sampai pengguna benar-benar menekan sebuah tombol. Setelah tombol ditekan, BIOS menyimpan hasilnya di dua register sekaligus, yaitu `AL` yang berisi karakter ASCII dari tombol tersebut, dan `AH` yang berisi scan code atau kode fisik tombol yang tidak di butuhkan. <br>
-Baris `xor ah, ah` digunakan untuk mengosongkan register `AH` yang tidak dibutuhkan. Cara kerjanya adalah dengan melakukan operasi XOR antara AH dengan dirinya sendiri, karena XOR suatu nilai dengan dirinya sendiri selalu menghasilkan nol. <br>
-`ret` mengembalikan eksekusi program ke pemanggilnya yaitu fungsi `getChar()` di `kernel.c`, sekaligus membawa nilai karakter yang tadi ditekan sebagai return value. Inilah yang kemudian digunakan oleh `readString()` untuk menyusun string input dari pengguna karakter demi karakter. <br> 
+- `int 0x16` adalah perintah untuk memanggil BIOS interrupt nomor 16, yaitu interrupt yang khusus menangani keyboard. Ketika baris ini dijalankan, program akan berhenti sejenak dan menunggu sampai pengguna benar-benar menekan sebuah tombol. Setelah tombol ditekan, BIOS menyimpan hasilnya di dua register sekaligus, yaitu `AL` yang berisi karakter ASCII dari tombol tersebut, dan `AH` yang berisi scan code atau kode fisik tombol yang tidak di butuhkan. <br>
+- `xor ah, ah` akan mengosongkan register `AH` yang tidak dibutuhkan. Cara kerjanya adalah dengan melakukan operasi XOR antara AH dengan dirinya sendiri, karena XOR suatu nilai dengan dirinya sendiri selalu menghasilkan nol. <br>
+- `ret` mengembalikan eksekusi program ke pemanggilnya yaitu fungsi `getChar()` di `kernel.c`, sekaligus membawa nilai karakter yang tadi ditekan sebagai return value. Inilah yang kemudian digunakan oleh `readString()` untuk menyusun string input dari pengguna karakter demi karakter. <br> 
 ### kernel.c
 ```c
 int cursor;
