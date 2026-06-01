@@ -20,7 +20,7 @@ log: bochslog.txt
 mouse: enabled=0
 display_library: sdl2
 ```
-`romimage` berisi file BIOS (program pertama yang dijalankan saat komputer nyala, sebelum bootloader) yang dibituhkan Bochs. Sedangkan ``  berisi file VGA BIOS, yang mengatur bagaimana tampilan/layar bekerja di emulator. <br>
+`romimage` berisi file BIOS (program pertama yang dijalankan saat komputer nyala, sebelum bootloader) yang dibituhkan Bochs. Sedangkan `vgaromimage` berisi file VGA BIOS, yang mengatur bagaimana tampilan/layar bekerja di emulator. <br>
 `mouse: enabled=0` untuk menonaktifkan mouse, karena OS hanya membutuhkan Keyboard. <br>
 `display_library: sdl2` adalah library yang dipakai Bochs untuk menampilkan layar emulator di linux. <br>
 ### kernel.asm 
