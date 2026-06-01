@@ -73,6 +73,11 @@ _getChar:
     xor ah, ah
     ret
 ```
+Fungsi `_getChar` adalah fungsi Assembly yang bertugas membaca input keyboard dari pengguna. Fungsi ini perlu dibuat di Assembly karena tidak ada library apapun (no stdlib), sehingga satu-satunya cara untuk berkomunikasi langsung dengan hardware keyboard adalah melalui BIOS interrupt. <br>
+Baris pertama akan mengisi register `AH` dengan nilai `0x00`. Register `AH` berfungsi seperti "kode perintah" yang memberitahu BIOS apa yang di minta dan nilai `0x00` akan meminta untuk membaca tombil keyboard yang ditekan pengguna. <br>
+Baris berikutnya int 0x16 adalah perintah untuk memanggil BIOS interrupt nomor 16, yaitu interrupt yang khusus menangani keyboard. Ketika baris ini dijalankan, program akan berhenti sejenak dan menunggu sampai pengguna benar-benar menekan sebuah tombol. Setelah tombol ditekan, BIOS menyimpan hasilnya di dua register sekaligus, yaitu `AL` yang berisi karakter ASCII dari tombol tersebut, dan `AH` yang berisi scan code atau kode fisik tombol yang tidak di butuhkan. <br>
+Baris `xor ah, ah` digunakan untuk mengosongkan register `AH` yang tidak dibutuhkan. Cara kerjanya adalah dengan melakukan operasi XOR antara AH dengan dirinya sendiri, karena XOR suatu nilai dengan dirinya sendiri selalu menghasilkan nol. <br>
+`ret` mengembalikan eksekusi program ke pemanggilnya yaitu fungsi `getChar()` di `kernel.c`, sekaligus membawa nilai karakter yang tadi ditekan sebagai return value. Inilah yang kemudian digunakan oleh `readString()` untuk menyusun string input dari pengguna karakter demi karakter. <br> 
 ### kernel.c
 ```c
 int cursor;
@@ -295,5 +300,16 @@ void main() {
     }
 }
 ```
+variabel global `cursor`  menyimpan posisi saat ini di layar, sedangkan `color` menyimpan warna teks yang sedang aktif, dengan nilai awal `0x07` yang berarti teks putih dengan latar belakang hitam. Selain itu, terdapat dua deklarasi fungsi eksternal yaitu putInMemory dan getChar. Kedua fungsi ini tidak didefinisikan di kernel.c melainkan di kernel.asm, sehingga perlu dideklarasikan terlebih dahulu agar compiler tahu bahwa fungsi tersebut ada. <br>
 
-
+- Fungsi `printChar` bertugas mencetak satu karakter ke layar dengan cara menulis langsung ke VGA memory.
+- Fungsi `newline` bertugas memindahkan kursor ke awal baris berikutnya.
+- Fungsi `printString` bertugas mencetak sebuah string karakter demi karakter. Fungsi ini bekerja dengan cara melakukan perulangan dari indeks pertama string hingga menemukan karakter null \0 yang menandakan akhir string.
+- Fungsi `clearScreen` bertugas membersihkan seluruh layar.
+- Fungsi `readString` bertugas membaca input dari keyboard karakter demi karakter dan menyimpannya ke dalam sebuah buffer. Fungsi ini terus membaca karakter menggunakan `getChar` dalam sebuah perulangan tanpa henti.
+- Fungsi `strcmp` bertugas membandingkan dua string apakah isinya sama persis atau tidak.
+- Fungsi `startsWith` bertugas mengecek apakah sebuah string diawali dengan kata tertentu
+- Fungsi `atoi` bertugas mengubah string angka menjadi nilai integer.
+- Fungsi `intToString` bertugas mengubah nilai integer menjadi string agar bisa ditampilkan di layar menggunakan `printString`.
+- Fungsi `factorial` bertugas menghitung nilai faktorial dari sebuah angka.
+  
