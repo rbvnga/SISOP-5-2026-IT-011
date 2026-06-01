@@ -735,4 +735,6 @@ variabel global `cursor`  menyimpan posisi saat ini di layar, sedangkan `color` 
 - Fungsi `intToString` bertugas mengubah nilai integer menjadi string agar bisa ditampilkan di layar menggunakan `printString`.
 - Fungsi `factorial` bertugas menghitung nilai faktorial dari sebuah angka.
 
+### Hasil
+<img width="834" height="567" alt="2_make run" src="https://github.com/user-attachments/assets/1aa6860b-e83e-4baf-a36c-0a4d2c646b5e" />
 
