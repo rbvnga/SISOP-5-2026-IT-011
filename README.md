@@ -305,6 +305,127 @@ echo "[+] Done! Output: osboot/multi.gz"
 
 ### iso.sh
 Menggabungkan `bzImage`, `single.gz`, dan `multi.gz` menjadi satu file ISO bootable menggunakan GRUB. Output disimpan sebagai `osboot/farewell.iso`. <br>
+```bash
+#!/bin/bash
+set -e
+BASE_DIR="$(cd "$(dirname "$0")" && pwd)"
+ISO_DIR="$BASE_DIR/iso_root"
+
+rm -rf "$ISO_DIR"
+mkdir -p "$ISO_DIR/boot/grub"
+
+# Copy artifacts
+cp "$BASE_DIR/osboot/bzImage"    "$ISO_DIR/boot/"
+cp "$BASE_DIR/osboot/single.gz"  "$ISO_DIR/boot/"
+cp "$BASE_DIR/osboot/multi.gz"   "$ISO_DIR/boot/"
+
+# GRUB config — bisa pilih single atau multi
+cat > "$ISO_DIR/boot/grub/grub.cfg" << 'EOF'
+set timeout=5
+set default=0
+
+menuentry "Farewell Party - Single User" {
+    linux  /boot/bzImage console=ttyS0 rdinit=/init quiet
+    initrd /boot/single.gz
+}
+
+menuentry "Farewell Party - Multi User" {
+    linux  /boot/bzImage console=ttyS0 rdinit=/init quiet
+    initrd /boot/multi.gz
+}
+EOF
+
+# Buat ISO
+grub-mkrescue -o "$BASE_DIR/osboot/farewell.iso" "$ISO_DIR"
+rm -rf "$ISO_DIR"
+echo "[+] Done! Output: osboot/farewell.iso"
+```
+### qemu.sh
+Script ini menjalankan OS yang sudah dibuat menggunakan emulator QEMU. <br>
+
+```bash
+#!/bin/bash
+BASE_DIR="$(cd "$(dirname "$0")" && pwd)"
+KERNEL="$BASE_DIR/osboot/bzImage"
+SINGLE="$BASE_DIR/osboot/single.gz"
+MULTI="$BASE_DIR/osboot/multi.gz"
+ISO="$BASE_DIR/osboot/farewell.iso"
+
+QEMU_NET="-netdev user,id=net0 -device virtio-net-pci,netdev=net0"
+QEMU_BASE="-m 512M -nographic $QEMU_NET"
+
+case "$1" in
+    --single)
+        qemu-system-x86_64 $QEMU_BASE \
+            -kernel "$KERNEL" \
+            -initrd "$SINGLE" \
+            -append "console=ttyS0 rdinit=/init quiet"
+        ;;
+    --multi)
+        qemu-system-x86_64 $QEMU_BASE \
+            -kernel "$KERNEL" \
+            -initrd "$MULTI" \
+            -append "console=ttyS0 rdinit=/init quiet"
+        ;;
+    --all)
+        qemu-system-x86_64 $QEMU_BASE \
+            -cdrom "$ISO" \
+            -boot d
+        ;;
+    *)
+        echo "Usage: $0 --single | --multi | --all"
+        exit 1
+        ;;
+esac
+```
+#### output
+```bash
+./qemu.sh --single   # Boot single-user filesystem
+```
+<img width="1014" height="620" alt="1_Single" src="https://github.com/user-attachments/assets/8083e06c-4ebd-40f5-8480-0544eaddcecf" />
+
+```bash
+./qemu.sh --multi    # Boot multi-user filesystem
+```
+<img width="1049" height="850" alt="1_user root" src="https://github.com/user-attachments/assets/0bcbc8c1-38fc-4b6a-9938-b0e75b867f5f" /> <br>
+<img width="1058" height="887" alt="1_user henn" src="https://github.com/user-attachments/assets/9b6b1879-ba56-4395-815a-de1508a10db2" /> <br>
+<img width="1020" height="887" alt="1_user hann" src="https://github.com/user-attachments/assets/3fbcb4e8-dcfe-4f5f-b589-398e63d32d97" /> <br>
+<img width="1007" height="913" alt="1_user viii" src="https://github.com/user-attachments/assets/95f82567-4704-4e27-a671-daa3db6d050b" /> <br>
+<img width="1033" height="942" alt="1_user kids" src="https://github.com/user-attachments/assets/bf7b5709-61cd-489d-9a7d-6de3da612bb8" /> <br>
+
+```bash
+./qemu.sh --all      # Boot dari ISO (pilih single/multi)
+```
+<img width="1187" height="774" alt="1_all" src="https://github.com/user-attachments/assets/987958be-4ed1-4bb9-955b-649b7ba45de7" /> <br>
+<img width="1133" height="657" alt="1_all(single)" src="https://github.com/user-attachments/assets/243dfa8b-cd9d-433a-a0e0-51e47d4af375" /> <br>
+<img width="1020" height="733" alt="1_all(multi)" src="https://github.com/user-attachments/assets/b53d33a6-40bf-4419-b58f-2c4333b0c260" /> <br>
+
+
+
+### backup.sh 
+script ini mengarsip semua hasil build ke dalam satu file ZIP dengan format nama `farewell_backup_[DDMMYYYY-HHMMSS].zip`. <br>
+```c
+#!/bin/bash
+set -e
+BASE_DIR="$(cd "$(dirname "$0")" && pwd)"
+TIMESTAMP=$(date +"%d%m%Y-%H%M%S")
+BACKUP_NAME="farewell_backup_[${TIMESTAMP}].zip"
+
+cd "$BASE_DIR/osboot"
+zip "$BASE_DIR/$BACKUP_NAME" bzImage single.gz multi.gz farewell.iso
+
+# Hapus file yang sudah diarsip dari osboot/
+rm -f bzImage single.gz multi.gz farewell.iso
+
+echo "[+] Done! Backup: $BACKUP_NAME"
+```
+#### output
+<img width="830" height="217" alt="1_backup" src="https://github.com/user-attachments/assets/354fb56d-2bf9-49ef-a9f1-2fec31813eb0" /> <br><img width="1014" height="620" alt="1_Single" src="https://github.com/user-attachments/assets/c7bb784b-b08c-4d29-81da-6802c54acae3" />
+
+### Tes Koneksi ke Akses Internet
+<img width="1200" height="988" alt="1_Akses Internet" src="https://github.com/user-attachments/assets/bd15a9d2-efc9-4ea2-9d3f-3b9438df22d9" />
+<br>
+
 ## Soal 2 - Season
 Mengimplementasikan mini OS shell sederhana yang berjalan di emulator Bochs x86-64. Shell ini mendukung berbagai command seperti operasi matematika, tampilan warna, dan lainnya. <br>
 ### bochsrc.txt
@@ -613,4 +734,5 @@ variabel global `cursor`  menyimpan posisi saat ini di layar, sedangkan `color` 
 - Fungsi `atoi` bertugas mengubah string angka menjadi nilai integer.
 - Fungsi `intToString` bertugas mengubah nilai integer menjadi string agar bisa ditampilkan di layar menggunakan `printString`.
 - Fungsi `factorial` bertugas menghitung nilai faktorial dari sebuah angka.
-  
+
+
