@@ -340,6 +340,10 @@ grub-mkrescue -o "$BASE_DIR/osboot/farewell.iso" "$ISO_DIR"
 rm -rf "$ISO_DIR"
 echo "[+] Done! Output: osboot/farewell.iso"
 ```
+#### output
+<img width="955" height="123" alt="1_Output iso" src="https://github.com/user-attachments/assets/dc3fe963-fc22-47e7-8fa3-5c567b0fc504" /> <br>
+
+
 ### qemu.sh
 Script ini menjalankan OS yang sudah dibuat menggunakan emulator QEMU. <br>
 
@@ -738,3 +742,4 @@ variabel global `cursor`  menyimpan posisi saat ini di layar, sedangkan `color` 
 ### Hasil
 <img width="834" height="567" alt="2_make run" src="https://github.com/user-attachments/assets/1aa6860b-e83e-4baf-a36c-0a4d2c646b5e" />
 
+### Revisi Setelah Demo
