@@ -742,7 +742,7 @@ variabel global `cursor`  menyimpan posisi saat ini di layar, sedangkan `color` 
 ### Hasil
 <img width="834" height="567" alt="2_make run" src="https://github.com/user-attachments/assets/1aa6860b-e83e-4baf-a36c-0a4d2c646b5e" />
 
-### Revisi Setelah Demo
+# Revisi Setelah Demo
 ## Soal_1 - Revisi
 ### Ringkasan Perubahan
  
@@ -778,7 +778,152 @@ scripts/config --enable CONFIG_FUSE_FS
 - Tanpa config ini, meskipun binary `hello_fuse` sudah ada di filesystem, kernel tidak memiliki mekanisme untuk menerimanya.
 ---
 ## multi.sh - revisi
-
+ 
+| No | Komponen | Perubahan |
+|----|----------|-----------|
+| 1 | `switchuser.c` | Tambah `initgroups()` agar supplementary group dari `/etc/group` dimuat dengan benar |
+| 2 | `hello_fuse.c` | Program FUSE baru dengan `FUSE_USE_VERSION 31` (API fuse3), signature fungsi diperbarui |
+| 3 | Dynamic Linker | Copy `ld-linux-x86-64.so.2` dari host ke `lib64/` dalam filesystem |
+| 4 | `libfuse3` | Copy `libfuse3.so.4` dari host ke `usr/lib/` dalam filesystem |
+| 5 | `libc.so.6` | Copy libc dari host ke `usr/lib/` sebagai dependency `hello_fuse` |
+| 6 | Network otomatis | Tambah `ifconfig`, `route`, dan `resolv.conf` di `init` |
+| 7 | Package manager `party` | Script shell untuk download dan install paket dari Alpine Linux mirror |
+| 8 | `LD_LIBRARY_PATH` | Export `LD_LIBRARY_PATH=/usr/lib` di `init` agar dynamic linker tahu lokasi library |
+| 9 | Direktori `/mnt` | Tambah `/mnt` di struktur filesystem sebagai mount point FUSE |
+ 
+---
+ 
+### Perubahan `switchuser.c` — Tambah `initgroups()`
+ 
+> **Tujuan:** Agar user yang login mendapat supplementary group dari `/etc/group`, sehingga permission akses home dir berlaku sesuai tabel soal.
+ 
+| Aspek | Sebelum (lama) | Sesudah (baru) |
+|-------|----------------|----------------|
+| Header include | `#include <pwd.h>` | `#include <pwd.h>` + `#include <grp.h>` |
+| Group setup | _(tidak ada)_ | `initgroups(pw->pw_name, pw->pw_gid)` |
+| Urutan call | `setgid → setuid` | `initgroups → setgid → setuid` |
+ 
+**Penjelasan `initgroups()`:**
+ 
+`initgroups(username, gid)` membaca `/etc/group` dan memuat semua group yang memiliki `username` sebagai member. Ini penting karena:
+ 
+- `setgid()` hanya set **primary group** — tidak memuat supplementary groups
+- Tanpa `initgroups()`, user `henn` yang masuk ke group `hann`, `viii`, `kids` tidak akan mendapat akses ke home dir yang menggunakan group permission
+- Dengan `initgroups()`, kernel mengetahui semua group yang dimiliki user sehingga `chmod 750` pada home dir berfungsi dengan benar
+**Kode lama:**
+```c
+if (setgid(pw->pw_gid) != 0) { perror("setgid"); return 1; }
+if (setuid(pw->pw_uid) != 0) { perror("setuid"); return 1; }
+```
+ 
+**Kode baru:**
+```c
+if (initgroups(pw->pw_name, pw->pw_gid) != 0) { perror("initgroups"); return 1; }
+if (setgid(pw->pw_gid) != 0) { perror("setgid"); return 1; }
+if (setuid(pw->pw_uid) != 0) { perror("setuid"); return 1; }
+```
+ 
+---
+ 
+### Penambahan `hello_fuse.c` — Program FUSE
+ 
+> **Tujuan:** Membuktikan bahwa OS dapat menjalankan program FUSE sesuai soal nomor 10.
+ 
+| Aspek | Kode Lama | Kode Baru |
+|-------|-----------|-----------|
+| FUSE version | `#define FUSE_USE_VERSION 30` | `#define FUSE_USE_VERSION 31` |
+| `getattr` signature | `hello_getattr(path, st)` | `hello_getattr(path, st, fi)` |
+| `readdir` filler call | `filler(buf, name, NULL, 0)` | `filler(buf, name, NULL, 0, 0)` |
+| `readdir` parameter | _(tidak ada flags param)_ | `enum fuse_readdir_flags flags` |
+| Library link | `pkg-config fuse` | `pkg-config fuse3` |
+ 
+Perubahan signature diperlukan karena `fuse3` (versi 3.x) mengubah API-nya dari versi 2.x. Kode lama menggunakan API fuse2 yang **tidak kompatibel** dengan `libfuse3` yang tersedia di Kali Linux.
+ 
+---
+ 
+### Penambahan Dynamic Linker & Libraries
+ 
+> **Masalah:** `hello_fuse` adalah binary dinamis — membutuhkan dynamic linker dan shared libraries untuk bisa dieksekusi di dalam initramfs.
+ 
+Initramfs minimal tidak memiliki dynamic linker (`/lib64/ld-linux-x86-64.so.2`) maupun shared libraries. Tanpa keduanya, kernel akan mengembalikan error `not found` meskipun binary ada.
+ 
+**File yang ditambahkan ke filesystem:**
+ 
+| File di Host | Lokasi di Filesystem | Fungsi |
+|---|---|---|
+| `/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2` | `lib64/ld-linux-x86-64.so.2` | Dynamic linker — interpreter yang menjalankan binary dinamis |
+| `/usr/lib/x86_64-linux-gnu/libfuse3.so.4` | `usr/lib/libfuse3.so.4` | Library FUSE3 yang dibutuhkan `hello_fuse` |
+| _(symlink)_ | `usr/lib/libfuse3.so.3` | Symlink agar linker menemukan library dengan nama `.so.3` |
+| `/usr/lib/x86_64-linux-gnu/libc.so.6` | `usr/lib/libc.so.6` | C standard library — dibutuhkan semua binary dinamis |
+ 
+**Kode yang ditambahkan di `multi.sh`:**
+ 
+```bash
+# Path library di Kali Linux
+LIBFUSE="/usr/lib/x86_64-linux-gnu/libfuse3.so.4"
+LIBC="/usr/lib/x86_64-linux-gnu/libc.so.6"
+LDLINUX="/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2"
+ 
+mkdir -p multi_fs/lib64
+mkdir -p multi_fs/usr/lib
+ 
+cp "$LDLINUX" lib64/ld-linux-x86-64.so.2
+cp "$LIBFUSE"  usr/lib/libfuse3.so.4
+ln -sf libfuse3.so.4 usr/lib/libfuse3.so.3
+cp "$LIBC"     usr/lib/libc.so.6
+```
+ 
+---
+ 
+### Penambahan Network Otomatis di `init`
+ 
+> **Tujuan:** Agar internet tersambung otomatis setiap boot tanpa perlu konfigurasi manual.
+ 
+| Aspek | Sebelum | Sesudah |
+|-------|---------|---------|
+| Network setup | Manual setiap boot | Otomatis di `init` |
+| `ifconfig` | _(tidak ada)_ | `ifconfig eth0 10.0.2.15 netmask 255.255.255.0` |
+| `route` | _(tidak ada)_ | `route add default gw 10.0.2.2` |
+| DNS | _(tidak ada)_ | `echo nameserver 8.8.8.8 > /etc/resolv.conf` |
+ 
+**Penjelasan setiap perintah:**
+ 
+- **`ifconfig eth0 10.0.2.15 netmask 255.255.255.0`** — Set IP address statis pada interface `eth0`. QEMU user-mode networking menggunakan subnet `10.0.2.0/24` dengan guest di `10.0.2.15`
+- **`route add -net 10.0.2.0 netmask 255.255.255.0 dev eth0`** — Tambah route untuk subnet lokal agar sistem tahu bahwa `10.0.2.x` dapat dicapai via `eth0`
+- **`route add default gw 10.0.2.2 dev eth0`** — Set default gateway ke `10.0.2.2` (QEMU virtual gateway) agar traffic ke internet diteruskan keluar
+- **`echo nameserver 8.8.8.8 > /etc/resolv.conf`** — Konfigurasi DNS resolver. Tanpa ini, domain name tidak dapat di-resolve sehingga `wget example.com` gagal meskipun `ping 8.8.8.8` berhasil
+**Kode yang ditambahkan di `init`:**
+ 
+```sh
+# Network otomatis
+/bin/busybox ifconfig eth0 10.0.2.15 netmask 255.255.255.0 2>/dev/null
+/bin/busybox route add -net 10.0.2.0 netmask 255.255.255.0 dev eth0 2>/dev/null
+/bin/busybox route add default gw 10.0.2.2 dev eth0 2>/dev/null
+/bin/busybox echo "nameserver 8.8.8.8" > /etc/resolv.conf
+ 
+# Set LD_LIBRARY_PATH agar hello_fuse bisa temukan libfuse3
+export LD_LIBRARY_PATH=/usr/lib
+```
+ 
+---
+ 
+### Penambahan Package Manager `party`
+ 
+> **Tujuan:** Memenuhi soal nomor 9 — OS harus punya package manager yang dapat menginstall package, dengan binary bernama `party`.
+ 
+Script `party` menggunakan Alpine Linux APK mirror sebagai backend. Alasan memilih Alpine:
+ 
+- Format `.apk` adalah `tar.gz` biasa sehingga dapat di-extract menggunakan `tar` bawaan BusyBox
+- Alpine menyediakan `APKINDEX.tar.gz` yang dapat di-parse untuk mencari versi paket yang tepat
+- Paket Alpine berukuran kecil, cocok untuk environment minimal
+**Alur kerja `party install <paket>`:**
+ 
+```
+1. Download APKINDEX.tar.gz dari mirror Alpine
+2. Parse index dengan awk untuk menemukan versi paket
+3. Download file .apk dengan nama lengkap (misal: fuse3-3.14.1-r2.apk)
+4. Extract .apk ke / menggunakan tar -xzf
+```
 ## Hasil - revisi soal-1
 <img width="703" height="158" alt="1_Revisi Osboot" src="https://github.com/user-attachments/assets/b4e4f5e0-335c-45ad-8547-567bb001970e" />
 <img width="874" height="804" alt="1_Revisi FUSE" src="https://github.com/user-attachments/assets/5b4a8e40-b6ca-4da9-a80e-3383a618f276" />
