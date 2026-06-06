@@ -25,6 +25,7 @@ make defconfig
 # Disable EFI (tidak diperlukan di QEMU tanpa UEFI)
 scripts/config --disable CONFIG_EFI_STUB
 scripts/config --disable CONFIG_EFI
+scripts/config --enable CONFIG_FUSE_FS
 
 # Compile
 echo "[*] Compiling kernel (pakai $(nproc) core)..."
