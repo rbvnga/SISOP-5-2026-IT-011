@@ -743,3 +743,46 @@ variabel global `cursor`  menyimpan posisi saat ini di layar, sedangkan `color` 
 <img width="834" height="567" alt="2_make run" src="https://github.com/user-attachments/assets/1aa6860b-e83e-4baf-a36c-0a4d2c646b5e" />
 
 ### Revisi Setelah Demo
+## Soal_1 - Revisi
+### Ringkasan Perubahan
+ 
+| File | Perubahan |
+|------|-----------|
+| `kernel.sh` | Tambah `CONFIG_FUSE_FS=y` untuk enable FUSE di kernel |
+| `multi.sh` | Tambah `hello_fuse`, dynamic linker, library fuse3, network otomatis, package manager `party`, `switchuser` dengan `initgroups` |
+
+---
+## kernel.sh - revisi
+Setelah kernel berhasil dikompilasi dan sistem dapat booting, ditemukan bahwa program FUSE tidak dapat berjalan di dalam QEMU. Pesan error yang muncul:
+```
+fuse: device /dev/fuse not found. Kernel module not loaded?
+```
+Investigasi menggunakan perintah berikut di dalam QEMU:
+```sh
+cat /proc/filesystems | grep fuse
+zcat /proc/config.gz 2>/dev/null | grep FUSE
+```
+Kedua perintah tidak menghasilkan output apapun, dimana membuktikan kernel dikompilasi **tanpa dukungan FUSE**.
+ **Revisi kode**
+ 
+```bash
+# Disable EFI
+scripts/config --disable CONFIG_EFI_STUB
+scripts/config --disable CONFIG_EFI
+ 
+# kode yang ditambahkan
+scripts/config --enable CONFIG_FUSE_FS
+```
+- **`CONFIG_FUSE_FS`** adalah konfigurasi kernel Linux yang mengaktifkan dukungan FUSE. FUSE memungkinkan program di user space mengimplementasikan filesystem sendiri tanpa memodifikasi kernel.
+- Dengan `CONFIG_FUSE_FS=y`, kernel akan membuat device `/dev/fuse` secara otomatis saat boot melalui `devtmpfs`. Device ini menjadi jembatan komunikasi antara program FUSE di user space dengan kernel.
+- Tanpa config ini, meskipun binary `hello_fuse` sudah ada di filesystem, kernel tidak memiliki mekanisme untuk menerimanya.
+---
+## multi.sh - revisi
+
+## Hasil - revisi soal-1
+<img width="703" height="158" alt="1_Revisi Osboot" src="https://github.com/user-attachments/assets/b4e4f5e0-335c-45ad-8547-567bb001970e" />
+<img width="874" height="804" alt="1_Revisi FUSE" src="https://github.com/user-attachments/assets/5b4a8e40-b6ca-4da9-a80e-3383a618f276" />
+
+
+
+## Soal_2 - Revisi
