@@ -931,3 +931,230 @@ Script `party` menggunakan Alpine Linux APK mirror sebagai backend. Alasan memil
 
 
 ## Soal_2 - Revisi
+## `bochsrc.txt`
+
+```
+megs: 32
+romimage: file=/usr/share/bochs/BIOS-bochs-latest
+vgaromimage: file=/usr/share/bochs/VGABIOS-lgpl-latest
+boot: floppy
+floppya: 1_44=floppy.img, status=inserted
+log: bochslog.txt
+mouse: enabled=0
+display_library: sdl2
+```
+Untuk WSL, menjalankan perintah ini terlebih dahulu:
+ ```bash
+ export DISPLAY=$(cat /etc/resolv.conf | grep nameserver | awk '{print $2}'):0
+ ```
+
+---
+### `kernel.asm`
+
+```asm
+bits 16
+
+global _start
+global _putInMemory
+global _getChar
+global _getFromMemory
+extern _main
+
+_start:
+    cli
+    mov ax, 0x1000  ; kernel diload di segment 0x1000
+    mov ds, ax      ; set semua segment ke 0x1000
+    mov es, ax
+    mov ss, ax
+    mov sp, 0xFFFF  ; stack di atas segment
+    sti
+    call _main      ; panggil fungsi main() di kernel.c
+
+.hang:
+    jmp .hang       ; loop selamanya jika main() return
+
+_putInMemory:
+    push bp
+    mov bp, sp
+    push ds
+    push bx
+    mov ax, [bp+4]  ; parameter 1: segment
+    mov bx, [bp+6]  ; parameter 2: address
+    mov cl, [bp+8]  ; parameter 3: character
+    mov ds, ax
+    mov [bx], cl    ; tulis karakter ke memori
+    pop bx
+    pop ds
+    pop bp
+    ret
+
+_getFromMemory:
+    push bp
+    mov bp, sp
+    push ds
+    push bx
+    mov ax, [bp+4]  ; parameter 1: segment
+    mov bx, [bp+6]  ; parameter 2: address
+    mov ds, ax
+    mov al, [bx]    ; baca karakter dari memori
+    xor ah, ah      ; bersihkan AH
+    pop bx
+    pop ds
+    pop bp
+    ret
+
+_getChar:
+    mov ah, 0x00    ; fungsi baca keyboard
+    int 0x16        ; BIOS keyboard interrupt
+    xor ah, ah      ; bersihkan AH, sisakan karakter di AL
+    ret
+```
+- `_start` mengatur semua segment ke `0x1000` karena bootloader meload kernel ke alamat `0x1000:0000`
+- `_putInMemory` menulis satu karakter ke alamat memori tertentu, digunakan untuk menulis ke VGA memory `0xB800`
+- `_getFromMemory` membaca satu karakter dari alamat memori tertentu, digunakan untuk membaca kembali input dari VGA memory
+- `_getChar` menggunakan BIOS interrupt `0x16` untuk menunggu dan membaca input keyboard
+### `kernel.c`
+```c
+
+```
+#### Konsep VGA Memory sebagai Buffer
+
+Karena array lokal tidak bisa dibaca dengan benar di `bcc`, input pengguna disimpan langsung ke VGA memory dan dibaca kembali menggunakan `getFromMemory`:
+
+```
+VGA Memory Layout:
+[char][color][char][color][char][color]...
+  0     1      2     3      4     5
+```
+
+Setiap karakter membutuhkan 2 byte — byte pertama karakter ASCII, byte kedua warna.
+
+#### Cara membaca command dari VGA
+
+```c
+// karakter ke-N dari cmdstart ada di address: (cmdstart + N) * 2 
+getFromMemory(0xB800, (cmdstart + N) * 2)
+```
+
+#### Struktur Program
+
+```c
+void putInMemory(int segment, int address, char character);
+int getChar();
+int getFromMemory(int segment, int address);
+
+void main() {
+    int cursor, pos, cmdstart, cmdlen, i, j, n, a, b, temp, row, match;
+    char c, color;
+    char rev[10];  // buffer untuk intToString 
+}
+```
+
+#### Clear Screen
+
+```c
+i = 0;
+while (i < 2000) {          // 80 x 25 = 2000 karakter 
+    pos = i * 2;
+    putInMemory(0xB800, pos, ' ');      // karakter spasi 
+    pos = pos + 1;
+    putInMemory(0xB800, pos, 0x07);    // warna default putih 
+    i = i + 1;
+}
+cursor = 0;
+```
+
+#### Print String dari String Literal
+
+```c
+i = 0;
+c = "Hello World"[i];
+while (c != '\0') {
+    pos = cursor * 2;
+    putInMemory(0xB800, pos, c);
+    pos = pos + 1;
+    putInMemory(0xB800, pos, color);
+    cursor = cursor + 1;
+    i = i + 1;
+    c = "Hello World"[i];
+}
+```
+
+#### Read String (Input Keyboard)
+
+```c
+cmdstart = cursor;  // catat posisi awal command 
+cmdlen = 0;
+
+while (1) {
+    c = getChar();
+    if (c == '\r') break;           // Enter
+    if (c == '\b') {                // Backspace 
+        if (cmdlen > 0) {
+            cmdlen = cmdlen - 1;
+            cursor = cursor - 1;
+            pos = cursor * 2;
+            putInMemory(0xB800, pos, ' ');  / hapus karakter 
+            pos = pos + 1;
+            putInMemory(0xB800, pos, color);
+        }
+    } else if (c >= 32) {           // karakter biasa 
+        pos = cursor * 2;
+        putInMemory(0xB800, pos, c);        // simpan ke VGA 
+        pos = pos + 1;
+        putInMemory(0xB800, pos, color);
+        cursor = cursor + 1;
+        cmdlen = cmdlen + 1;
+    }
+}
+```
+
+#### Cara Membandingkan Command
+
+```c
+// cek apakah command adalah "check"
+if (match == 0 && cmdlen == 5) {
+    if (getFromMemory(0xB800, cmdstart*2+0) == 'c' &&
+        getFromMemory(0xB800, cmdstart*2+2) == 'h' &&
+        getFromMemory(0xB800, cmdstart*2+4) == 'e' &&
+        getFromMemory(0xB800, cmdstart*2+6) == 'c' &&
+        getFromMemory(0xB800, cmdstart*2+8) == 'k') {
+        match = 1;
+        // tampilkan "ok" 
+    }
+}
+```
+
+> Offset `+0, +2, +4, +6, +8` karena setiap karakter di VGA memory membutuhkan 2 byte (karakter + warna).
+
+#### intToString 
+
+```c
+// ubah integer n ke string, simpan di rev[] secara terbalik
+j = 0;
+if (n == 0) {
+    rev[0] = '0';
+    j = 1;
+} else {
+    temp = n;
+    while (temp > 0) {
+        rev[j] = '0' + (temp - (temp/10)*10);  // digit terakhir 
+        temp = temp / 10;
+        j = j + 1;
+    }
+}
+// cetak terbalik
+i = 0;
+while (i < j) {
+    putInMemory(0xB800, cursor*2, rev[j-i-1]);
+    cursor = cursor + 1;
+    i = i + 1;
+}
+```
+
+> `temp - (temp/10)*10` adalah pengganti `temp % 10` karena modulo dilarang.
+
+---
+## Hasil - revisi soal-2
+<img width="737" height="487" alt="2_Revisi Hasil (1)" src="https://github.com/user-attachments/assets/04b3ea86-52e4-4a9a-813d-193bb5e72d56" />
+<img width="739" height="488" alt="2_Revisi Hasil (2)" src="https://github.com/user-attachments/assets/14d316d7-cd56-4e03-a98a-3f7a6ec71528" />
