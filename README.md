@@ -1014,9 +1014,7 @@ _getChar:
 - `_getFromMemory` membaca satu karakter dari alamat memori tertentu, digunakan untuk membaca kembali input dari VGA memory
 - `_getChar` menggunakan BIOS interrupt `0x16` untuk menunggu dan membaca input keyboard
 ### `kernel.c`
-```c
 
-```
 #### Konsep VGA Memory sebagai Buffer
 
 Karena array lokal tidak bisa dibaca dengan benar di `bcc`, input pengguna disimpan langsung ke VGA memory dan dibaca kembali menggunakan `getFromMemory`:
